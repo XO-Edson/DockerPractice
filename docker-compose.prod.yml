@@ -1,0 +1,84 @@
+services:
+
+ # frontend:
+  #  build: 
+   #   context: ./frontend/docker_frontend
+    #  dockerfile: Dockerfile
+    #init: true
+    #restart: unless-stopped
+    #networks:
+     # - app-network
+
+  backend:
+    build: 
+      context: ./backend
+      dockerfile: Dockerfile
+    init: true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/ || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    depends_on:
+      postgres:
+        condition: service_healthy
+    secrets:
+    - db_user
+    - db_password
+    environment:
+      - NODE_ENV=production
+    expose: 
+      - "5000"
+    networks:
+      - app-network
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER_FILE: /run/secrets/db_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/db_password
+      POSTGRES_DB: myapp
+    expose:
+      - "5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $(cat /run/secrets/db_user) -d myapp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    secrets:
+    - db_user
+    - db_password
+    networks:
+      - app-network
+
+  nginx:
+    build: 
+      context: .
+      dockerfile: /frontend/docker_frontend/Dockerfile
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    restart: unless-stopped 
+    networks:
+      - app-network
+
+volumes:
+  postgres_data:
+
+secrets:
+  db_user:
+    file: ./secrets/db_user.txt
+  db_password:
+    file: ./secrets/db_password.txt
+
+networks:
+  app-network:
+
+    
